@@ -130,7 +130,7 @@ class FloodItEnv(gym.Env):
 
         if len(changed_cells) == 0:
             # No change occurred (could happen if trying to flood current color)
-            reward = 0.0
+            reward = -10.0
         else:
             # Penalty for each move
             reward = -1.0
