@@ -21,8 +21,8 @@ from typing import List, Set
 
 
 # Constants
-BOARD_SIZE = 14           # Grid dimensions (14x14)
-NUM_COLORS = 6            # Colors are integers 0-5
+BOARD_SIZE = 4           # Grid dimensions (14x14)
+NUM_COLORS = 3            # Colors are integers 0-5
 MAX_MOVES = 25            # Game ends after this many moves
 
 

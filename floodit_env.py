@@ -19,6 +19,7 @@ from floodit import (
     generate_board,
     flood_fill_stack,
     check_win,
+    get_connected_cells,
 )
 
 
@@ -31,6 +32,8 @@ class FloodItEnv(gym.Env):
     - Each turn, choose a color to flood from top-left region
     - Win when entire board becomes one color
     - Max 25 moves allowed
+    - Reward: Difference in controlled territory (connected cells) after each move.
+      This encourages expanding your connected region.
     """
 
     metadata = {"render_modes": ["human", "ansi"]}
@@ -111,7 +114,7 @@ class FloodItEnv(gym.Env):
 
         Returns:
             observation: Updated board state
-            reward: -1 for each move, +100 if solved
+            reward: Difference in controlled territory between after and before
             terminated: True if game ended by winning
             truncated: True if max moves reached
             info: Dictionary with metadata
@@ -125,28 +128,36 @@ class FloodItEnv(gym.Env):
                 f"Invalid action {action}. Must be in range [0, {NUM_COLORS - 1}]"
             )
 
-        # Flood fill with chosen color
-        changed_cells = flood_fill_stack(self._board, 0, 0, action)
+        self._moves_used += 1
 
-        if len(changed_cells) == 0:
-            # No change occurred (could happen if trying to flood current color)
-            reward = -10.0
-        else:
-            # Penalty for each move
-            reward = -1.0
-            self._moves_used += 1
+        # Count controlled territory BEFORE the move
+        from floodit import get_connected_cells
+        territory_before = len(get_connected_cells(self._board, self._current_color))
 
-        # Update current color of top-left region
-        self._current_color = self._board[0][0]
+        # Do flood fill with chosen color
+        _ = flood_fill_stack(self._board, 0, 0, action)
+
+        # Count controlled territory AFTER the move
+        # After flood fill, the new connected region has the NEW color at (0,0)
+        new_color_at_top_left = self._board[0][0]
+        territory_after = len(get_connected_cells(self._board, new_color_at_top_left))
+
+        # Reward is the difference: cells newly controlled this turn
+        reward = float(territory_after - territory_before) -1
+
+        # Bonus for solving (given once when game ends)
 
         # Check termination conditions
         terminated = check_win(self._board)
         truncated = self._moves_used >= MAX_MOVES
 
-        # Reward for solving game
-        if terminated and not getattr(self, "_solved", False):  # Only give reward once
-            reward = 100.0 + reward  # Combine win bonus with move penalty
+        # Reward for solving game (give bonus once, not on each step)
+        if terminated and not getattr(self, "_solved", False):
+            reward = 100.0 + reward  # Win bonus combined with move penalty
             self._solved = True
+
+        # Update current color after flood fill
+        self._current_color = self._board[0][0]
 
         # Convert board to numpy array for observation
         observation = np.array(self._board, dtype=np.int64)
@@ -210,7 +221,8 @@ class FloodItEnv(gym.Env):
         lines.append("=" * 38)
 
         # Board grid (transpose to print columns as text lines)
-        transposed = np.array(self._board).T
+        board_array = np.array(self._board)
+        transposed = board_array.T
         for row in transposed:
             line = ' '.join(f"{cell:2d}" for cell in row)
             lines.append(line)
