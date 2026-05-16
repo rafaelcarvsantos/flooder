@@ -68,40 +68,34 @@ class FloodItEnv(gym.Env):
         self._current_color: int = 0
         self._moves_used: int = 0
 
-    def reset(self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None):
-        """
-        Reset the environment to initial state.
-
-        Args:
-            seed: Seed for random number generation (not used in this simple env)
-            options: Additional options (not used currently)
-
-        Returns:
-            observation: Initial board state as numpy array
-            info: Dictionary with metadata
-        """
+    def reset(self, seed=None, options=None):
         super().reset(seed=seed, options=options)
 
-        # Generate a new random board
-        board = generate_board()
+        options = options or {}
 
-        # Store board and track game state
-        self._board = board  # Keep as list for flood_fill_stack compatibility
-        self._current_color = board[0][0]  # Color of top-left cell
+        if "fixed_board" in options:
+            board = [row[:] for row in options["fixed_board"]]
+        else:
+            if seed is not None:
+                np.random.seed(seed)
+                import random
+                random.seed(seed)
+
+            board = generate_board()
+
+        self._board = board
+        self._current_color = board[0][0]
         self._moves_used = 0
         self._solved = False
 
-        # Convert to numpy array and return as observation
         observation = np.array(board, dtype=np.int64)
 
         info = {
             "moves": self._moves_used,
             "moves_left": MAX_MOVES - self._moves_used,
             "solved": False,
+            "action_mask": self._action_mask(),
         }
-
-        if seed is not None:
-            np.random.seed(seed)
 
         return observation.copy(), info
 
@@ -166,16 +160,24 @@ class FloodItEnv(gym.Env):
             "moves": self._moves_used,
             "moves_left": MAX_MOVES - self._moves_used,
             "solved": terminated,
+            "action_mask": self._action_mask(),
         }
 
         return observation.copy(), reward, terminated, truncated, info
+
+    def _action_mask(self) -> np.ndarray:
+        """Return valid color choices; choosing the current color is a no-op."""
+        mask = np.ones(NUM_COLORS, dtype=np.int8)
+        if hasattr(self, "_board") and self._board:
+            mask[int(self._board[0][0])] = 0
+        return mask
 
     @property
     def board(self) -> np.ndarray:
         """Get the current board as a numpy array."""
         if not hasattr(self, "_board"):
             raise RuntimeError("Board not initialized. Call reset() first.")
-        return self._board.copy()
+        return np.array(self._board, dtype=np.int64).copy()
 
     @property
     def moves_used(self) -> int:
