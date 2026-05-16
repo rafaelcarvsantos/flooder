@@ -6,7 +6,7 @@ Wraps the terminal Flood-It game into a Gymnasium-compatible environment.
 Uses existing floodit.py game logic with minimal modifications for importability.
 """
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
@@ -38,7 +38,13 @@ class FloodItEnv(gym.Env):
 
     metadata = {"render_modes": ["human", "ansi"]}
 
-    def __init__(self, render_mode: str = None) -> None:
+    def __init__(
+        self,
+        render_mode: str = None,
+        board_size: int = BOARD_SIZE,
+        num_colors: int = NUM_COLORS,
+        max_moves: int = MAX_MOVES,
+    ) -> None:
         """
         Initialize the Flood-It environment.
 
@@ -46,23 +52,35 @@ class FloodItEnv(gym.Env):
             render_mode: How to render the environment. Options are:
                 - None (no rendering)
                 - "human" (render in terminal)
+            board_size: Width and height of the square board.
+            num_colors: Number of color/action ids.
+            max_moves: Episode move limit.
         """
         super().__init__()
 
         self.render_mode = render_mode
+        self.board_size = int(board_size)
+        self.num_colors = int(num_colors)
+        self.max_moves = int(max_moves)
 
-        # Observation space: flattened board as integer array
-        # Shape: (BOARD_SIZE, BOARD_SIZE), dtype: int64
-        observation_shape = (BOARD_SIZE, BOARD_SIZE)
+        if self.board_size <= 0:
+            raise ValueError("board_size must be positive")
+        if self.num_colors < 2:
+            raise ValueError("num_colors must be at least 2")
+        if self.max_moves <= 0:
+            raise ValueError("max_moves must be positive")
+
+        # Observation space: board color ids with shape (board_size, board_size).
+        observation_shape = (self.board_size, self.board_size)
         self.observation_space = spaces.Box(
             low=0,
-            high=NUM_COLORS - 1,
+            high=self.num_colors - 1,
             shape=observation_shape,
             dtype=np.int64,
         )
 
-        # Action space: choose a color from 0 to NUM_COLORS-1
-        self.action_space = spaces.Discrete(NUM_COLORS)
+        # Action space: choose a color from 0 to num_colors-1.
+        self.action_space = spaces.Discrete(self.num_colors)
 
         # Store game state attributes (not in observation space)
         self._current_color: int = 0
@@ -81,20 +99,34 @@ class FloodItEnv(gym.Env):
                 import random
                 random.seed(seed)
 
-            board = generate_board()
+            board = generate_board(self.board_size, self.num_colors)
 
-        self._board = board
-        self._current_color = board[0][0]
+        board_array = np.array(board, dtype=np.int64)
+        if board_array.shape != self.observation_space.shape:
+            raise ValueError(
+                f"fixed_board shape must be {self.observation_space.shape}, "
+                f"got {board_array.shape}"
+            )
+        if board_array.min() < 0 or board_array.max() >= self.num_colors:
+            raise ValueError(
+                f"fixed_board colors must be in range [0, {self.num_colors - 1}]"
+            )
+
+        self._board = board_array.tolist()
+        self._current_color = self._board[0][0]
         self._moves_used = 0
         self._solved = False
 
-        observation = np.array(board, dtype=np.int64)
+        observation = np.array(self._board, dtype=np.int64)
 
         info = {
             "moves": self._moves_used,
-            "moves_left": MAX_MOVES - self._moves_used,
+            "moves_left": self.max_moves - self._moves_used,
             "solved": False,
             "action_mask": self._action_mask(),
+            "board_size": self.board_size,
+            "num_colors": self.num_colors,
+            "max_moves": self.max_moves,
         }
 
         return observation.copy(), info
@@ -117,9 +149,9 @@ class FloodItEnv(gym.Env):
         if not isinstance(action, int):
             action = int(action)
 
-        if action < 0 or action >= NUM_COLORS:
+        if action < 0 or action >= self.num_colors:
             raise ValueError(
-                f"Invalid action {action}. Must be in range [0, {NUM_COLORS - 1}]"
+                f"Invalid action {action}. Must be in range [0, {self.num_colors - 1}]"
             )
 
         self._moves_used += 1
@@ -143,7 +175,7 @@ class FloodItEnv(gym.Env):
 
         # Check termination conditions
         terminated = check_win(self._board)
-        truncated = self._moves_used >= MAX_MOVES
+        truncated = self._moves_used >= self.max_moves
 
         # Reward for solving game (give bonus once, not on each step)
         if terminated and not getattr(self, "_solved", False):
@@ -158,16 +190,19 @@ class FloodItEnv(gym.Env):
 
         info = {
             "moves": self._moves_used,
-            "moves_left": MAX_MOVES - self._moves_used,
+            "moves_left": self.max_moves - self._moves_used,
             "solved": terminated,
             "action_mask": self._action_mask(),
+            "board_size": self.board_size,
+            "num_colors": self.num_colors,
+            "max_moves": self.max_moves,
         }
 
         return observation.copy(), reward, terminated, truncated, info
 
     def _action_mask(self) -> np.ndarray:
         """Return valid color choices; choosing the current color is a no-op."""
-        mask = np.ones(NUM_COLORS, dtype=np.int8)
+        mask = np.ones(self.num_colors, dtype=np.int8)
         if hasattr(self, "_board") and self._board:
             mask[int(self._board[0][0])] = 0
         return mask
@@ -199,7 +234,7 @@ class FloodItEnv(gym.Env):
         if self.render_mode == "human":
             # Print game state info and flush to ensure display updates
             import sys
-            print(f"Moves left: {MAX_MOVES - self._moves_used}", end="\n\n")
+            print(f"Moves left: {self.max_moves - self._moves_used}", end="\n\n")
             sys.stdout.flush()
 
             # Print board with aligned columns
@@ -213,12 +248,12 @@ class FloodItEnv(gym.Env):
         lines = []
 
         # Header
-        lines.append(f"Moves used: {self._moves_used}/{MAX_MOVES}")
+        lines.append(f"Moves used: {self._moves_used}/{self.max_moves}")
         lines.append("=" * 38)
 
         # Board with color labels
         lines.append("Color key:")
-        for c in range(NUM_COLORS):
+        for c in range(self.num_colors):
             lines.append(f"  {c}: color {c}")
         lines.append("=" * 38)
 
@@ -274,7 +309,7 @@ def main():
 
     while True:
         # Random action
-        action = random.randint(0, NUM_COLORS - 1)
+        action = random.randint(0, env.num_colors - 1)
         print(f"Action: {action}")
 
         observation, reward, terminated, truncated, info = env.step(action)

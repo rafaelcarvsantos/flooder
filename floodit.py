@@ -21,22 +21,23 @@ from typing import List, Set
 
 
 # Constants
-BOARD_SIZE = 4           # Grid dimensions (14x14)
-NUM_COLORS = 3            # Colors are integers 0-5
-MAX_MOVES = 25            # Game ends after this many moves
+BOARD_SIZE = 4            # Default grid dimensions
+NUM_COLORS = 3            # Default number of colors
+MAX_MOVES = 25            # Default move limit
 
 
-def generate_board() -> List[List[int]]:
+def generate_board(board_size: int = BOARD_SIZE,
+                   num_colors: int = NUM_COLORS) -> List[List[int]]:
     """
-    Generate a random 14x14 board with colors 0-5.
+    Generate a random square board with color ids.
 
     Returns:
         A 2D list representing the board, where each cell holds an integer color.
     """
     board = []
     import random
-    for _ in range(BOARD_SIZE):
-        row = [random.randint(0, NUM_COLORS - 1) for _ in range(BOARD_SIZE)]
+    for _ in range(board_size):
+        row = [random.randint(0, num_colors - 1) for _ in range(board_size)]
         board.append(row)
     return board
 
@@ -108,7 +109,7 @@ def flood_fill_stack(board: List[List[int]], start_row: int, start_col: int,
             nr, nc = r + dr, c + dc
 
             # Skip out-of-bounds cells
-            if not (0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE):
+            if not (0 <= nr < len(board) and 0 <= nc < len(board[0])):
                 continue
 
             # Only traverse cells that have the starting color AND haven't been visited
@@ -207,7 +208,7 @@ def get_connected_cells(board: List[List[int]], target_color: int,
         for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             nr, nc = r + dr, c + dc
 
-            if not (0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE):
+            if not (0 <= nr < len(board) and 0 <= nc < len(board[0])):
                 continue
 
             if board[nr][nc] == target_color and (nr, nc) not in visited:
